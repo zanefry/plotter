@@ -1,145 +1,86 @@
-#include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 #include <cmath>
-#include <cstdio>
-#include <pthread.h>
 
-// constants for RK
-const short s = 4;
-const float c[] = {0, 1.0/2, 1.0/2, 1};
-const float b[] = {1.0/8, 3.0/8, 3.0/8, 1.0/8};
-const float a[][3] = {{1.0/2}, {0, 1.0/2}, {0, 0, 1}};
+int window_width = 1200;
+int window_height = 800;
 
-using namespace std;
-using namespace sf;
+double xmin = -20;
+double xmax = 20;
+double ymin = -20;
+double ymax = 20;
+double xrange = xmax - xmin;
+double yrange = ymax - ymin;
 
-vector<vector<Vertex> > curves;
-
-static double xmin, xmax, ymin, ymax;
-static unsigned int rows, cols;
-static double stepsize;
-
-typedef struct solution_id {
-    double x;
-    double y;
-    unsigned int row;
-    unsigned int col;
-} solution_id;
-
-double f(double x, double y)
+double f(double x)
 {
-    return x + sin(y);
+    return std::sin(x);
 }
 
-void rk(double x_i, double y_i, bool direction)
+sf::Vector2f plot_to_screen_xform(sf::Vector2f v)
 {
-    vector<Vertex> pts;
+    double screen_x = (v.x - xmin) * window_width/xrange;
+    double screen_y = window_height/2 + window_height*(-v.y / yrange);
 
-    double x = x_i, y = y_i;
-    double sz = direction ? stepsize : -stepsize;
-    double k[s];
-
-    while (1) {
-        pts.push_back(Vertex(Vector2f(x, y)));
-
-        if ((x < xmin || xmax < x) || (y < ymin || ymax < y)) {
-            curves.push_back(pts);
-            return;
-        }
-
-        for (int i = 0; i < s; i++) {
-            double sum = 0;
-
-            for(int j = 0; j < i; j++)
-                sum += a[i-1][j] * k[j];
-
-            k[i] = f(x + c[i] * stepsize, y + sum * sz);
-        }
-
-        double avg = 0;
-        for (int i = 0; i < s; i++)
-            avg += b[i] * k[i];
-
-        x += sz;
-        y += avg * sz;
-    }
+    return sf::Vector2f(screen_x, screen_y);
 }
 
-int main(int argc, char** argv)
+sf::VertexArray gen_curve(sf::Vector2f start, double xstepsize)
 {
-    int windowWidth = 1000;
-    int windowHeight = 1000;
-    RenderWindow window(VideoMode(windowWidth, windowHeight), "Test");
-
-    double xgap, ygap;
-
-    if (argc != 8) {
-        printf("usage: ./plotter <xmin> <xmax> <ymin> <ymax> <rows> <cols> <stepsize>\n");
-        return 1;
+    sf::VertexArray left(sf::LineStrip, 0);
+    for (double x = start.x; x > xmin; x -= xstepsize) {
+        left.append(sf::Vector2f(x, start.y + f(x)));
     }
 
-    sscanf (argv[1], "%lf", &xmin);
-    sscanf (argv[2], "%lf", &xmax);
-    sscanf (argv[3], "%lf", &ymin);
-    sscanf (argv[4], "%lf", &ymax);
-    sscanf (argv[5], "%u", &rows);
-    sscanf (argv[6], "%u", &cols);
-    sscanf (argv[7], "%lf", &stepsize);
-
-    xgap = (xmax - xmin) / (cols + 1);
-    ygap = (ymax - ymin) / (rows + 1);
-
-    // leftmost col
-    for (int i = 0; i <= rows; i++)
-        rk(xmin, i*ygap + ymin, true);
-
-    // set y of last row to ymax manually for precision, rather than (rows + 1)*ygap + ymin
-    rk(xmin, ymax, true);
-
-    // middle cols
-
-    for (int j = 1; j <= cols; j++) {
-        double x = j * xgap + xmin;
-        unsigned int col = j;
-
-        for (int i = 0; i <= rows; i++) {
-            double y = i * ygap + ymin;
-            unsigned int row = i;
-
-            rk(x, y, true);
-            rk(x, y, false);
-        }
-
-        rk(x, ymax, true);
-        rk(x, ymax, false);
+    sf::VertexArray right(sf::LineStrip, 0);
+    for (double x = start.x; x < xmax; x += xstepsize) {
+        right.append(sf::Vector2f(x, start.y + f(x)));
     }
 
-    // rightmost col
-    for (int i = 0; i <= rows; i++)
-        rk(xmax, i*ygap + ymin, false);
+    int left_count = left.getVertexCount();
+    int right_count = right.getVertexCount();
+    sf::VertexArray curve(sf::LineStrip, left_count + right_count);
 
-    rk(xmax, ymax, false);
+    int idx = 0;
+    for (int i = left_count - 1; i >= 0; i--) {
+        curve[idx] = plot_to_screen_xform(left[i].position);
+        idx++;
+    }
+    for (int i = 0; i < right_count; i++) {
+        curve[idx] = plot_to_screen_xform(right[i].position);
+        idx++;
+    }
 
-    for (int i = 0; i < curves.size(); i++) {
-        for (int j = 0; j < curves[i].size(); j++) {
-            curves[i][j].position.x -= xmin;
-            curves[i][j].position.x *= windowWidth / (xmax - xmin);
+    return curve;
+}
 
-            curves[i][j].position.y -= ymin;
-            curves[i][j].position.y *= windowHeight / (ymax - ymin);
-        }
+int main()
+{
+    sf::RenderWindow window(sf::VideoMode(window_width, window_height), "SFML works!");
+
+    int curve_resolution = 300;
+    double xstepsize = xrange / curve_resolution;
+
+    int num_curves = 130;
+    std::vector<sf::VertexArray> curves(num_curves);
+
+    float percent_oof = 0.45;
+    double ystep = (percent_oof + 1)*yrange / (num_curves - 1);
+    for (int i = 0; i < num_curves; i++) {
+        curves.push_back(gen_curve(sf::Vector2f(0, ymin - percent_oof*yrange / 2 + i*ystep), xstepsize));
     }
 
     while (window.isOpen()) {
-        Event event;
-        while (window.pollEvent(event))
-            if (event.type == Event::Closed)
+        sf::Event event;
+
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed)
                 window.close();
+        }
 
         window.clear();
 
-        for (vector<Vertex> pts : curves)
-            window.draw(&pts[0], pts.size(), LineStrip);
+        for (sf::VertexArray curve : curves)
+            window.draw(curve);
 
         window.display();
     }
