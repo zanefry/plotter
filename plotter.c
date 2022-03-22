@@ -14,7 +14,7 @@
 // Each curve is integrated until it leaves the range.
 //
 // Assumptions this program makes:
-// a dir called curves exists in the current dir and is writeable
+// a dir called curves exists in the working dir and is writeable
 // the definition of FUNCTION is a valid expression
 // the arguments to the program are within reasonable expectations
 //
