@@ -5,11 +5,11 @@ const int window_width = 1800;
 const int window_height = 1200;
 
 double scale = 40;
-double stepsize = 0.05;
+double stepsize = 0.08;
 
 double f(sf::Vector2f v)
 {
-    return std::sin(v.x) - std::cos(v.y);
+    return (std::sin(v.x) * std::cos(v.y))*std::abs(v.x);
 }
 
 sf::Vector2f rk4(sf::Vector2f v, bool direction)
@@ -20,12 +20,11 @@ sf::Vector2f rk4(sf::Vector2f v, bool direction)
     const float b[] = {1.0/8, 3.0/8, 3.0/8, 1.0/8};
     const float a[][3] = {{0.5}, {0, 0.5}, {0, 0, 1}};
 
-    double step = stepsize ? direction : -stepsize;
-
+    double step;
     if (direction)
-        double step = stepsize;
+        step = stepsize;
     else
-        double step = -stepsize;
+        step = -stepsize;
 
     double k[s];
     for(int i = 0; i < s; i++) {
@@ -42,7 +41,6 @@ sf::Vector2f rk4(sf::Vector2f v, bool direction)
 
     v += sf::Vector2f(step, avg * step);
 
-    //printf("(%f, %f)\n", v.x, v.y);
     return v;
 }
 
@@ -74,7 +72,6 @@ sf::VertexArray gen_curve(sf::Vector2f start)
     sf::Vector2f v(start);
 
     left.append(v);
-    //printf("(%f, %f)\n", v.x, v.y);
 
     while (-scale/2 < v.x && -scale/2 < v.y && v.y < scale/2) {
         v = rk4(v, false);
@@ -109,30 +106,19 @@ int main()
     sf::RenderWindow window(sf::VideoMode(window_width, window_height), "Plotter");
     sf::Vector2f view_origin = sf::Vector2f(0, 0);
 
-    int num_rows = 20;
-    int num_cols = 20;
+
+    int num_rows = 40;
+    int num_cols = 15;
     std::vector<sf::VertexArray> curves(num_rows * num_cols);
 
-    for (int i = 0; i < 20; i++) {
-        double start_y = -scale/2 + i*scale/19;
-        curves.push_back(gen_curve(sf::Vector2f(0, start_y)));
+    for (int r = 0; r < num_rows; r++)
+        for (int c = 0; c < num_cols; c++) {
+            double x = -scale/2 + c*(scale/(num_cols-1));
+            double y = -scale/2 + r*(scale/(num_rows-1));
+            curves.push_back(gen_curve(sf::Vector2f(x, y)));
+        }
 
-        printf("%f\n", start_y);
-    }
-
-//    for (int r = 0; r < num_rows; r++)
-//        for (int c = 0; c < num_cols; c++) {
-//            double x = -scale/2 + c*scale/(num_cols-1);
-//            double y = -scale/2 + r*scale/(num_rows-1);
-//
-//            //printf("1\n");
-//
-//            curves.push_back(gen_curve(sf::Vector2f(x, y)));
-//        }
-
-    //printf("2\n");
-
-    ///// Control settings /////
+    ///// Controls /////
 
     double pan_speed        = 0.002;
     double fast_pan_speed   = 0.005;
