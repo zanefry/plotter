@@ -12,7 +12,7 @@ double f(sf::Vector2f v)
     return std::sin(v.x) - std::cos(v.y);
 }
 
-sf::Vector2f rk4(sf::Vector2f v, bool direction)
+sf::Vector2f rk4 (sf::Vector2f v, double stepsize)
 {
     // "Butcher's Table" constants for the RK4 integration alg.
     const int s = 4;
@@ -20,29 +20,21 @@ sf::Vector2f rk4(sf::Vector2f v, bool direction)
     const float b[] = {1.0/8, 3.0/8, 3.0/8, 1.0/8};
     const float a[][3] = {{0.5}, {0, 0.5}, {0, 0, 1}};
 
-    double step = stepsize ? direction : -stepsize;
-
-    if (direction)
-        double step = stepsize;
-    else
-        double step = -stepsize;
-
     double k[s];
     for(int i = 0; i < s; i++) {
         double sum = 0;
         for(int j = 0; j < i; j++)
             sum += a[i-1][j] * k[j];
 
-        k[i] = f(sf::Vector2f(v.x + c[i] * step, v.y + sum * step));
+        k[i] = f(sf::Vector2f(v.x + c[i] * stepsize, v.y + sum * stepsize));
     }
 
     double avg = 0;
     for (int i = 0; i < s; i++)
         avg += b[i] * k[i];
 
-    v += sf::Vector2f(step, avg * step);
+    v += sf::Vector2f(stepsize, avg * stepsize);
 
-    //printf("(%f, %f)\n", v.x, v.y);
     return v;
 }
 
@@ -67,23 +59,22 @@ sf::VertexArray plot_to_screen_curve(sf::VertexArray curve, sf::Vector2f origin)
     return screen_curve;
 }
 
-sf::VertexArray gen_curve(sf::Vector2f start)
+sf::VertexArray gen_curve(sf::Vector2f start, double stepsize)
 {
     sf::VertexArray left(sf::LineStrip);
     sf::VertexArray right(sf::LineStrip);
     sf::Vector2f v(start);
 
     left.append(v);
-    //printf("(%f, %f)\n", v.x, v.y);
 
-    while (-scale/2 < v.x && -scale/2 < v.y && v.y < scale/2) {
-        v = rk4(v, false);
+    while (-scale/2 < v.x && v.x < scale/2 && -scale/2 < v.y && v.y < scale/2) {
+        v = rk4(v, -stepsize);
         left.append(v);
     }
 
     v = start;
-    while (v.x < scale/2 && -scale/2 < v.y && v.y < scale/2) {
-        v = rk4(v, true);
+    while (-scale/2 < v.x && v.x < scale/2 && -scale/2 < v.y && v.y < scale/2) {
+        v = rk4(v, stepsize);
         right.append(v);
     }
 
@@ -109,30 +100,14 @@ int main()
     sf::RenderWindow window(sf::VideoMode(window_width, window_height), "Plotter");
     sf::Vector2f view_origin = sf::Vector2f(0, 0);
 
-    int num_rows = 20;
-    int num_cols = 20;
-    std::vector<sf::VertexArray> curves(num_rows * num_cols);
+    int num_curves = 130;
+    std::vector<sf::VertexArray> curves(num_curves);
 
-    for (int i = 0; i < 20; i++) {
-        double start_y = -scale/2 + i*scale/19;
-        curves.push_back(gen_curve(sf::Vector2f(0, start_y)));
-
-        printf("%f\n", start_y);
+    float percent_oof = 0.1;
+    double ystep = (percent_oof + 1)*scale / (num_curves - 1);
+    for (int i = 0; i < num_curves; i++) {
+        curves.push_back(gen_curve(sf::Vector2f(0, -scale/2 - percent_oof*scale / 2 + i*ystep), stepsize));
     }
-
-//    for (int r = 0; r < num_rows; r++)
-//        for (int c = 0; c < num_cols; c++) {
-//            double x = -scale/2 + c*scale/(num_cols-1);
-//            double y = -scale/2 + r*scale/(num_rows-1);
-//
-//            //printf("1\n");
-//
-//            curves.push_back(gen_curve(sf::Vector2f(x, y)));
-//        }
-
-    //printf("2\n");
-
-    ///// Control settings /////
 
     double pan_speed        = 0.002;
     double fast_pan_speed   = 0.005;
@@ -176,8 +151,6 @@ int main()
                 scale *= 1 - fast_zoom_speed;
             else
                 scale *= 1 - zoom_speed;
-
-        ///// Draw /////
 
         window.clear();
 
