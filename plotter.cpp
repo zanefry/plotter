@@ -4,8 +4,7 @@
 int window_width = 1200;
 int window_height = 1200;
 
-double xrange = 40;
-double yrange = 40;
+double scale = 40;
 
 double f(double x)
 {
@@ -14,10 +13,10 @@ double f(double x)
 
 sf::Vector2f plot_to_screen_point(sf::Vector2f v, sf::Vector2f origin)
 {
-    double xmin = origin.x - xrange/2;
+    v -= origin;
 
-    double screen_x = (v.x - xmin) * window_width/xrange;
-    double screen_y = window_height/2 + window_height*(-v.y / yrange) + origin.y;
+    double screen_x = (v.x + scale/2) * window_width/scale;
+    double screen_y = (-v.y + scale/2) * window_height/scale;
 
     return sf::Vector2f(screen_x, screen_y);
 }
@@ -36,12 +35,12 @@ sf::VertexArray plot_to_screen_curve(sf::VertexArray curve, sf::Vector2f origin)
 sf::VertexArray gen_curve(sf::Vector2f start, double xstepsize)
 {
     sf::VertexArray left(sf::LineStrip);
-    for (double x = start.x; x > -xrange/2; x -= xstepsize) {
+    for (double x = start.x; x > -scale/2; x -= xstepsize) {
         left.append(sf::Vector2f(x, start.y + f(x)));
     }
 
     sf::VertexArray right(sf::LineStrip);
-    for (double x = start.x; x < xrange/2; x += xstepsize) {
+    for (double x = start.x; x < scale/2; x += xstepsize) {
         right.append(sf::Vector2f(x, start.y + f(x)));
     }
 
@@ -68,16 +67,21 @@ int main()
     sf::Vector2f view_origin = sf::Vector2f(0, 0);
 
     int curve_resolution = 300;
-    double xstepsize = xrange / curve_resolution;
+    double xstepsize = scale / curve_resolution;
 
     int num_curves = 130;
     std::vector<sf::VertexArray> curves(num_curves);
 
     float percent_oof = 0.1;
-    double ystep = (percent_oof + 1)*yrange / (num_curves - 1);
+    double ystep = (percent_oof + 1)*scale / (num_curves - 1);
     for (int i = 0; i < num_curves; i++) {
-        curves.push_back(gen_curve(sf::Vector2f(0, -yrange/2 - percent_oof*yrange / 2 + i*ystep), xstepsize));
+        curves.push_back(gen_curve(sf::Vector2f(0, -scale/2 - percent_oof*scale / 2 + i*ystep), xstepsize));
     }
+
+    double pan_speed        = 0.002;
+    double fast_pan_speed   = 0.005;
+    double zoom_speed       = 0.0025;
+    double fast_zoom_speed  = 0.005;
 
     while (window.isOpen()) {
         sf::Event event;
@@ -88,21 +92,35 @@ int main()
         }
 
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up))
-            view_origin.y += 0.1*yrange;
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+                view_origin.y += fast_pan_speed * scale;
+            else
+                view_origin.y += pan_speed * scale;
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down))
-            view_origin.y -= 0.1*yrange;
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+                view_origin.y -= fast_pan_speed * scale;
+            else
+                view_origin.y -= pan_speed * scale;
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))
-            view_origin.x -= 0.01*xrange;
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+                view_origin.x -= fast_pan_speed * scale;
+            else
+                view_origin.x -= pan_speed * scale;
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right))
-            view_origin.x += 0.01*xrange;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Comma)) {
-            xrange *= 1.01;
-            yrange *= 1.01;
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Period)) {
-            xrange *= 0.99;
-            yrange *= 0.99;
-        }
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+                view_origin.x += fast_pan_speed * scale;
+            else
+                view_origin.x += pan_speed * scale;
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Comma))
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+                scale *= 1 + fast_zoom_speed;
+            else
+                scale *= 1 + zoom_speed;
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Period))
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+                scale *= 1 - fast_zoom_speed;
+            else
+                scale *= 1 - zoom_speed;
 
         window.clear();
 
