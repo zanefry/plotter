@@ -1,15 +1,16 @@
 #include <SFML/Graphics.hpp>
 #include <cmath>
+//#include <algorithm>
 
 const int window_width = 1800;
 const int window_height = 1200;
 
-double scale = 40;
-double stepsize = 0.08;
+double scale = 10;
+double stepsize = 0.01;
 
 double f(sf::Vector2f v)
 {
-    return (std::sin(v.x) * std::cos(v.y))*std::abs(v.x);
+    return -v.y + std::sin(v.x*10);
 }
 
 sf::Vector2f rk4(sf::Vector2f v, bool direction)
@@ -59,10 +60,25 @@ sf::VertexArray plot_to_screen_curve(sf::VertexArray curve, sf::Vector2f origin)
     int num_verts = curve.getVertexCount();
     sf::VertexArray screen_curve = sf::VertexArray(sf::LineStrip, num_verts);
 
-    for (int i = 0; i < num_verts; i++)
-        screen_curve[i] = plot_to_screen_point(curve[i].position, origin);
+    for (int i = 0; i < num_verts; i++) {
+        sf::Vector2f screen_point = plot_to_screen_point(curve[i].position, origin);
+        screen_curve[i] = sf::Vertex(screen_point, curve[i].color);
+    }
 
     return screen_curve;
+}
+
+// Color saturates linearly from 0 @ 0 slope to 255 @ cap slope and above
+sf::Color color(sf::Vector2f v)
+{
+    double cap = 8;
+
+    double slope = v.y/v.x;
+    double sat = 255 - std::min(std::abs(slope) * 255/cap, 255.);
+    if (slope >= 0)
+        return sf::Color(sat, sat, sat);
+    else
+        return sf::Color(sat, sat, sat);
 }
 
 sf::VertexArray gen_curve(sf::Vector2f start)
@@ -74,14 +90,23 @@ sf::VertexArray gen_curve(sf::Vector2f start)
     left.append(v);
 
     while (-scale/2 < v.x && -scale/2 < v.y && v.y < scale/2) {
-        v = rk4(v, false);
-        left.append(v);
+        sf::Vector2f old_v = sf::Vector2f(v);
+        v = rk4(old_v, false);
+
+        sf::Vector2f dv = v - old_v;
+        left.append(sf::Vertex(v, color(dv)));
     }
+
+    // Go back and color basepoint
+    left[0].color = color(left[1].position - left[0].position);
 
     v = start;
     while (v.x < scale/2 && -scale/2 < v.y && v.y < scale/2) {
-        v = rk4(v, true);
-        right.append(v);
+        sf::Vector2f old_v = sf::Vector2f(v);
+        v = rk4(old_v, true);
+
+        sf::Vector2f dv = v - old_v;
+        right.append(sf::Vertex(v, color(dv)));
     }
 
     int left_count = left.getVertexCount();
@@ -106,9 +131,8 @@ int main()
     sf::RenderWindow window(sf::VideoMode(window_width, window_height), "Plotter");
     sf::Vector2f view_origin = sf::Vector2f(0, 0);
 
-
-    int num_rows = 40;
-    int num_cols = 15;
+    int num_rows = 20;
+    int num_cols = 20;
     std::vector<sf::VertexArray> curves(num_rows * num_cols);
 
     for (int r = 0; r < num_rows; r++)
