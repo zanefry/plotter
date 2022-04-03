@@ -1,16 +1,58 @@
 #include <SFML/Graphics.hpp>
 #include <cmath>
-//#include <algorithm>
 
-const int window_width = 1800;
-const int window_height = 1200;
+const int window_width = 1400;
+const int window_height = 1400;
 
-double scale = 10;
-double stepsize = 0.01;
+double scale = 20;
+double stepsize = 0.05;
 
 double f(sf::Vector2f v)
 {
-    return -v.y + std::sin(v.x*10);
+    return std::sin(v.x) + sin(v.y*v.y);
+}
+
+sf::Vector2f kbd_move_view()
+{
+    double pan_speed        = 0.002;
+    double fast_pan_speed   = 0.005;
+    double zoom_speed       = 0.0025;
+    double fast_zoom_speed  = 0.005;
+
+    sf::Vector2f disp(0, 0);
+
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+            disp.y += fast_pan_speed * scale;
+        else
+            disp.y += pan_speed * scale;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+            disp.y -= fast_pan_speed * scale;
+        else
+            disp.y -= pan_speed * scale;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+            disp.x -= fast_pan_speed * scale;
+        else
+            disp.x -= pan_speed * scale;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+            disp.x += fast_pan_speed * scale;
+        else
+            disp.x += pan_speed * scale;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Comma))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+            scale *= 1 + fast_zoom_speed;
+        else
+            scale *= 1 + zoom_speed;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Period))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
+            scale *= 1 - fast_zoom_speed;
+        else
+            scale *= 1 - zoom_speed;
+
+    return disp;
 }
 
 sf::Vector2f rk4(sf::Vector2f v, bool direction)
@@ -21,16 +63,12 @@ sf::Vector2f rk4(sf::Vector2f v, bool direction)
     const float b[] = {1.0/8, 3.0/8, 3.0/8, 1.0/8};
     const float a[][3] = {{0.5}, {0, 0.5}, {0, 0, 1}};
 
-    double step;
-    if (direction)
-        step = stepsize;
-    else
-        step = -stepsize;
+    double step = direction ? stepsize : -stepsize;
 
     double k[s];
-    for(int i = 0; i < s; i++) {
+    for (int i = 0; i < s; i++) {
         double sum = 0;
-        for(int j = 0; j < i; j++)
+        for (int j = 0; j < i; j++)
             sum += a[i-1][j] * k[j];
 
         k[i] = f(sf::Vector2f(v.x + c[i] * step, v.y + sum * step));
@@ -71,7 +109,7 @@ sf::VertexArray plot_to_screen_curve(sf::VertexArray curve, sf::Vector2f origin)
 // Color saturates linearly from 0 @ 0 slope to 255 @ cap slope and above
 sf::Color color(sf::Vector2f v)
 {
-    double cap = 8;
+    double cap = 100;
 
     double slope = v.y/v.x;
     double sat = 255 - std::min(std::abs(slope) * 255/cap, 255.);
@@ -81,15 +119,18 @@ sf::Color color(sf::Vector2f v)
         return sf::Color(sat, sat, sat);
 }
 
-sf::VertexArray gen_curve(sf::Vector2f start)
+sf::VertexArray gen_curve(sf::Vector2f start, sf::Vector2f xbounds, sf::Vector2f ybounds)
 {
+    double xmin, xmax, ymin, ymax;
+    xmin = xbounds.x, xmax = xbounds.y, ymin = ybounds.x, ymax = ybounds.y;
+
     sf::VertexArray left(sf::LineStrip);
     sf::VertexArray right(sf::LineStrip);
     sf::Vector2f v(start);
 
     left.append(v);
 
-    while (-scale/2 < v.x && -scale/2 < v.y && v.y < scale/2) {
+    while (xmin <= v.x && v.x <= xmax && ymin <= v.y && v.y <= ymax) {
         sf::Vector2f old_v = sf::Vector2f(v);
         v = rk4(old_v, false);
 
@@ -101,7 +142,7 @@ sf::VertexArray gen_curve(sf::Vector2f start)
     left[0].color = color(left[1].position - left[0].position);
 
     v = start;
-    while (v.x < scale/2 && -scale/2 < v.y && v.y < scale/2) {
+    while (xmin <= v.x && v.x <= xmax && ymin <= v.y && v.y <= ymax) {
         sf::Vector2f old_v = sf::Vector2f(v);
         v = rk4(old_v, true);
 
@@ -131,23 +172,39 @@ int main()
     sf::RenderWindow window(sf::VideoMode(window_width, window_height), "Plotter");
     sf::Vector2f view_origin = sf::Vector2f(0, 0);
 
-    int num_rows = 20;
-    int num_cols = 20;
-    std::vector<sf::VertexArray> curves(num_rows * num_cols);
+    double hspacing = 1;
+    double vspacing = 1;
+    int hlimit = 10;
+    int vlimit = 10;
 
-    for (int r = 0; r < num_rows; r++)
-        for (int c = 0; c < num_cols; c++) {
-            double x = -scale/2 + c*(scale/(num_cols-1));
-            double y = -scale/2 + r*(scale/(num_rows-1));
-            curves.push_back(gen_curve(sf::Vector2f(x, y)));
+    double xmin, xmax, ymin, ymax;
+    xmin = -10, xmax = 10;
+    ymin = -10, ymax = 10;
+
+    std::vector<sf::VertexArray> curves;
+    for (int r = -vlimit; r <= vlimit; r++)
+        for (int c = -hlimit; c <= hlimit; c++) {
+            sf::Vector2f xbounds(xmin, xmax);
+            sf::Vector2f ybounds(ymin, ymax);
+            sf::Vector2f bp(c*hspacing, r*vspacing);
+
+            curves.push_back(gen_curve(bp, xbounds, ybounds));
         }
 
-    ///// Controls /////
+    std::vector<sf::VertexArray> grid;
+    for (int x = std::ceil(xmin); x <= std::floor(xmax); x++) {
+        sf::VertexArray line(sf::LineStrip);
+        line.append(sf::Vertex(sf::Vector2f(x, ymin), sf::Color(50, 0, 0)));
+        line.append(sf::Vertex(sf::Vector2f(x, ymax), sf::Color(50, 0, 0)));
+        grid.push_back(line);
+    }
+    for (int y = std::ceil(ymin); y <= std::floor(ymax); y++) {
+        sf::VertexArray line(sf::LineStrip);
+        line.append(sf::Vertex(sf::Vector2f(xmin, y), sf::Color(50, 0, 0)));
+        line.append(sf::Vertex(sf::Vector2f(xmax, y), sf::Color(50, 0, 0)));
+        grid.push_back(line);
+    }
 
-    double pan_speed        = 0.002;
-    double fast_pan_speed   = 0.005;
-    double zoom_speed       = 0.0025;
-    double fast_zoom_speed  = 0.005;
 
     while (window.isOpen()) {
         sf::Event event;
@@ -156,41 +213,14 @@ int main()
             if (event.type == sf::Event::Closed)
                 window.close();
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
-                view_origin.y += fast_pan_speed * scale;
-            else
-                view_origin.y += pan_speed * scale;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
-                view_origin.y -= fast_pan_speed * scale;
-            else
-                view_origin.y -= pan_speed * scale;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
-                view_origin.x -= fast_pan_speed * scale;
-            else
-                view_origin.x -= pan_speed * scale;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
-                view_origin.x += fast_pan_speed * scale;
-            else
-                view_origin.x += pan_speed * scale;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Comma))
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
-                scale *= 1 + fast_zoom_speed;
-            else
-                scale *= 1 + zoom_speed;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Period))
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift))
-                scale *= 1 - fast_zoom_speed;
-            else
-                scale *= 1 - zoom_speed;
+        view_origin += kbd_move_view();
 
         ///// Draw /////
 
         window.clear();
 
+        for (sf::VertexArray gridline : grid)
+            window.draw(plot_to_screen_curve(gridline, view_origin));
         for (sf::VertexArray curve : curves)
             window.draw(plot_to_screen_curve(curve, view_origin));
 
